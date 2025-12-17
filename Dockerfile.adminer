@@ -1,0 +1,15 @@
+FROM adminer:latest
+
+# Update package index
+#RUN apt-get update -y
+
+# clear local repo of files no longer needed
+#RUN apt-get clean
+
+# Upgrade packages
+#RUN apt-get upgrade -y
+
+#RUN apt-get update -y && apt-get upgrade -y && apt-get clean
+
+# Expose port 80 <--Not needed since using compose.yml file now
+EXPOSE 8080

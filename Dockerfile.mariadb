@@ -1,0 +1,12 @@
+FROM mariadb:latest
+
+# Update package index
+RUN apt-get update -y
+
+# clear local repo of files no longer needed
+RUN apt-get clean
+
+# Upgrade packages
+#RUN apt-get upgrade -y
+
+#RUN apt-get update -y && apt-get upgrade -y && apt-get clean

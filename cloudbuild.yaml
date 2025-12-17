@@ -1,0 +1,72 @@
+# cloudbuild.yaml
+steps:
+  # 1. Build the Drupal image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO_NAME}/drupal:$SHORT_SHA', '-f', 'Dockerfile.drupal', '.']
+
+  # 2. Build the Adminer image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO_NAME}/adminer:$SHORT_SHA', '-f', 'Dockerfile.adminer', '.']
+
+  # 3. Push the images to Artifact Registry
+  # The 'images' field automatically pushes the specified images after a successful build.
+  # This is more efficient than separate 'docker push' steps.
+
+  # 4. Get GKE credentials so kubectl can connect
+  - name: 'gcr.io/cloud-builders/gcloud'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - 'gcloud container clusters get-credentials ${_GKE_CLUSTER_NAME} --region ${_REGION}'
+
+  # 5. Prepare the Kubernetes manifests by replacing placeholders
+  - name: 'gcr.io/cloud-builders/gcloud'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        IMAGE_URL=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO_NAME}
+        INSTANCE_CONNECTION_NAME=$PROJECT_ID:${_REGION}:${_SQL_INSTANCE_NAME}
+        sed -i "s|__IMAGE_URL__|${IMAGE_URL}|g" k8s/deployment.yml
+        sed -i "s|__IMAGE_TAG__|${SHORT_SHA}|g" k8s/deployment.yml
+        sed -i "s|__INSTANCE_CONNECTION_NAME__|${INSTANCE_CONNECTION_NAME}|g" k8s/deployment.yml
+
+  # 6. Access the database password from Secret Manager
+  - name: 'gcr.io/cloud-builders/gcloud'
+    entrypoint: 'bash'
+    args: ['-c', 'gcloud secrets versions access latest --secret=DB_PASSWORD > /workspace/db-password']
+    id: 'GET_DB_PASSWORD'
+
+  # 7. Create the Kubernetes secret for the database password
+  - name: 'gcr.io/cloud-builders/gcloud'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        kubectl create secret generic drupal-secrets \
+          --from-file=DB_PASSWORD=/workspace/db-password \
+          --dry-run=client -o yaml | kubectl apply -f -
+    waitFor: ['GET_DB_PASSWORD'] # Ensures the password has been fetched first
+
+  # 8. Deploy the manifests to GKE
+  - name: 'gcr.io/cloud-builders/gcloud'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - 'kubectl apply -f k8s/'
+
+# List images to push to Artifact Registry after the build is complete.
+images:
+  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO_NAME}/drupal:$SHORT_SHA'
+  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO_NAME}/adminer:$SHORT_SHA'
+
+# Define user-defined substitutions that will be passed by the Trigger.
+# Default values are provided for clarity.
+substitutions:
+  _REGION: 'us-central1'
+  _GKE_CLUSTER_NAME: 'drupal-cluster'
+  _AR_REPO_NAME: 'drupal-repo'
+  _SQL_INSTANCE_NAME: 'drupal-db-instance'
+
+options:
+  logging: CLOUD_LOGGING_ONLY

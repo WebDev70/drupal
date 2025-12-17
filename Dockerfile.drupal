@@ -1,0 +1,20 @@
+FROM drupal:latest
+
+# Update package index
+RUN apt-get update -y
+
+# Upgrade packages
+#RUN apt-get upgrade -y
+
+# clear local repo of files no longer needed
+#RUN apt-get clean
+
+#Install any additional packages needed by your application
+#RUN apt-get install -y <package_name>
+
+# Install additional PHP extensions if required
+#RUN apt-get update && apt-get install -y \
+#   libpng-dev \
+#   libjpeg-dev \
+#   && docker-php-ext-configure gd --with-jpeg \
+#   && docker-php-ext-install gd

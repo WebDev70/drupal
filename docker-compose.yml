@@ -1,0 +1,67 @@
+version: '3.8'
+services:
+  drupal-award3:
+    build: 
+      context: .
+      dockerfile: Dockerfile.drupal
+    image: image-drupal
+    container_name: 'container-drupal'
+    ports:
+      - '8095:80'
+    depends_on:
+      - 'mariadb-award3'
+
+  mariadb-award3:
+    build:
+      context: .
+      dockerfile: Dockerfile.mariadb
+    image: image-mariadb1
+    container_name: 'container-mariadb1'
+    environment:
+      MARIADB_ROOT_PASSWORD: 'root'
+      MARIADB_DATABASE: 'drupal'
+      MARIADB_USER: 'drupal'
+      MARIADB_PASSWORD: 'drupal'
+
+  adminer:
+    build: 
+      context: .
+      dockerfile: Dockerfile.adminer
+    image: image-adminer
+    container_name: 'container-adminer'
+    ports:
+      - '8092:8080'
+
+
+
+# Usage commands:
+# 0. docker-compose up --build -d
+# 1. Start: docker-compose up -d
+# 2. Stop: docker-compose down
+# 3. Logs: docker-compose logs -f
+# 4. Rebuild: docker-compose down -v ; docker-compose up --build -d
+# 5. docker compose exec 'name_of_image' bash
+# 6. Access Drupal: http://localhost:8090/
+# 7. Access WordPress: http://localhost:8000
+# 8. Access phpMyAdmin: http://localhost:8080
+# 9. Access WordPress Admin: http://localhost:8000/wp-admin/index.php
+# 10. WordPress Tutorial - https://www.rubixstudios.com.au/website-design/wordpress-docker?srsltid=AfmBOor2-wrJ0J84f-dyuD16K8J1cNt3_MIWGNgimRLZ33svWQTw4uma
+# 11. Drupal Tutorial - https://www.youtube.com/watch?v=kztDsxyesqM&t=462s
+# 12. https://nginxproxymanager.com/setup/
+
+# version: '3.8'
+# services:
+#   drupal-award1:
+#     image: 'drupal:latest'
+#     container_name: 'awesomenameit'
+#     ports:
+#       - '8095:80' # Expose port 8095 to access Drupal
+#     depends_on:
+#       - 'mariadb-award1'
+#   mariadb-award1:
+#     image: 'mariadb'
+#     environment:
+#       MARIADB_ROOT_PASSWORD: 'root'
+#       MARIADB_DATABASE: 'drupal'
+#       MARIADB_USER: 'drupal'
+#       MARIADB_PASSWORD: 'drupal'

@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: drupal
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: drupal
+  template:
+    metadata:
+      labels:
+        app: drupal
+    spec:
+      containers:
+        # Drupal Application Container
+        - name: drupal
+          image: __IMAGE_URL__/drupal:__IMAGE_TAG__
+          ports:
+            - containerPort: 80
+          env:
+            - name: DB_HOST
+              value: "127.0.0.1"
+            - name: DB_PORT
+              value: "3306"
+            - name: DB_NAME
+              value: "drupal_db" # Should match the DB_NAME variable
+            - name: DB_USER
+              value: "drupal_user" # Should match the DB_USER variable
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: drupal-secrets
+                  key: DB_PASSWORD
+          volumeMounts:
+            - name: drupal-persistent-storage
+              mountPath: /var/www/html/sites/default/files
+
+        # Cloud SQL Auth Proxy Container (Sidecar)
+        - name: cloud-sql-proxy
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.8.0
+          args:
+            - "--structured-logs"
+            - "--port=3306"
+            - "__INSTANCE_CONNECTION_NAME__"
+          securityContext:
+            runAsUser: 0 # Run as root to have permission to listen on a privileged port
+
+      volumes:
+        - name: drupal-persistent-storage
+          persistentVolumeClaim:
+            claimName: drupal-pvc
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: adminer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: adminer
+  template:
+    metadata:
+      labels:
+        app: adminer
+    spec:
+      containers:
+        - name: adminer
+          image: __IMAGE_URL__/adminer:__IMAGE_TAG__
+          ports:
+            - containerPort: 8080

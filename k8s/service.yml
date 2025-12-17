@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: drupal-service
+spec:
+  type: LoadBalancer
+  selector:
+    app: drupal
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: adminer-service
+spec:
+  type: LoadBalancer # For production, consider changing this to ClusterIP and accessing via `kubectl port-forward` for security
+  selector:
+    app: adminer
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080
