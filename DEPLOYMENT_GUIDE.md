@@ -229,11 +229,11 @@ The Cloud Build service runs as a special, Google-managed "service account". We 
     ```
 2.  **Grant Permissions:** Copy the project number from the output and run the following commands, replacing `YOUR_PROJECT_NUMBER`.
     ```bash
-    export PROJECT_NUMBER=YOUR_PROJECT_NUMBER
+    export PROJECT_NUMBER=471278444008
     export CLOUDBUILD_SA="${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com"
 
     # Allow Cloud Build to deploy to GKE
-    gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:${CLOUDBUILD_SA}" --role="roles/container.developer"
+gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:${CLOUDBUILD_SA}" --role="roles/container.developer"
     # Allow Cloud Build to push images to Artifact Registry
     gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:${CLOUDBUILD_SA}" --role="roles/artifactregistry.writer"
     # Allow Cloud Build (and the app) to connect to Cloud SQL
