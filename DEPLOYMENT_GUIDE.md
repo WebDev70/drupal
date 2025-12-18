@@ -259,6 +259,16 @@ This trigger connects GitHub to Cloud Build.
 8.  **Configuration:** Select **Cloud Build configuration file** and set the location to `cloudbuild.yaml`.
 9.  Click **Create**.
 
+***
+### **Troubleshooting Note: Wrong Project ID in Errors**
+If your build fails with an error mentioning the wrong project ID (e.g., `...in project old-project-123...`), it means your Cloud Build Trigger was created while your Cloud Console was set to that old project. The trigger provides the incorrect `$PROJECT_ID` to the build.
+
+**To fix this:**
+1.  Ensure your Google Cloud Console is displaying the correct project (`drupal-project-481600`).
+2.  Delete the incorrect trigger.
+3.  Follow the steps above to re-create the trigger in the correct project.
+***
+
 ---
 
 ## Step 7: Trigger the Deployment
