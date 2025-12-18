@@ -170,11 +170,9 @@ steps:
     args:
       - '-c'
       - |
-        IMAGE_URL=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO_NAME}
-        INSTANCE_CONNECTION_NAME=$PROJECT_ID:${_REGION}:${_SQL_INSTANCE_NAME}
-        sed -i "s|__IMAGE_URL__|${IMAGE_URL}|g" k8s/deployment.yml
+        sed -i "s|__IMAGE_URL__|${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO_NAME}|g" k8s/deployment.yml
         sed -i "s|__IMAGE_TAG__|${SHORT_SHA}|g" k8s/deployment.yml
-        sed -i "s|__INSTANCE_CONNECTION_NAME__|${INSTANCE_CONNECTION_NAME}|g" k8s/deployment.yml
+        sed -i "s|__INSTANCE_CONNECTION_NAME__|$PROJECT_ID:${_REGION}:${_SQL_INSTANCE_NAME}|g" k8s/deployment.yml
 
   # This step fetches the database password from Secret Manager and saves it to a temporary file.
   - name: 'gcr.io/cloud-builders/gcloud'
