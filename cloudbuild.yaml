@@ -17,7 +17,7 @@ steps:
     entrypoint: 'bash'
     args:
       - '-c'
-      - 'gcloud container clusters get-credentials ${_GKE_CLUSTER_NAME} --region ${_REGION}'
+      - 'gcloud config set project $PROJECT_ID && gcloud container clusters get-credentials ${_GKE_CLUSTER_NAME} --region ${_REGION}'
 
   # 5. Prepare the Kubernetes manifests by replacing placeholders
   - name: 'gcr.io/cloud-builders/gcloud'
@@ -32,7 +32,7 @@ steps:
   # 6. Access the database password from Secret Manager
   - name: 'gcr.io/cloud-builders/gcloud'
     entrypoint: 'bash'
-    args: ['-c', 'gcloud secrets versions access latest --secret=DB_PASSWORD > /workspace/db-password']
+    args: ['-c', 'gcloud config set project $PROJECT_ID && gcloud secrets versions access latest --secret=DB_PASSWORD > /workspace/db-password']
     id: 'GET_DB_PASSWORD'
 
   # 7. Create the Kubernetes secret for the database password

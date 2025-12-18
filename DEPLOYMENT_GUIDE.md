@@ -162,7 +162,7 @@ steps:
     entrypoint: 'bash'
     args:
       - '-c'
-      - 'gcloud container clusters get-credentials ${_GKE_CLUSTER_NAME} --region ${_REGION}'
+      - 'gcloud config set project $PROJECT_ID && gcloud container clusters get-credentials ${_GKE_CLUSTER_NAME} --region ${_REGION}'
 
   # This step uses the 'sed' command to find and replace the placeholders in our deployment manifest.
   - name: 'gcr.io/cloud-builders/gcloud'
@@ -177,7 +177,7 @@ steps:
   # This step fetches the database password from Secret Manager and saves it to a temporary file.
   - name: 'gcr.io/cloud-builders/gcloud'
     entrypoint: 'bash'
-    args: ['-c', 'gcloud secrets versions access latest --secret=DB_PASSWORD > /workspace/db-password']
+    args: ['-c', 'gcloud config set project $PROJECT_ID && gcloud secrets versions access latest --secret=DB_PASSWORD > /workspace/db-password']
     id: 'GET_DB_PASSWORD'
 
   # This step creates a Kubernetes Secret from the password file fetched in the previous step.
