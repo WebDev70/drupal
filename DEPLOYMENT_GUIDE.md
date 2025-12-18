@@ -219,7 +219,7 @@ options:
 
 ## Step 5: Grant Permissions to the Cloud Build Service Account
 
-The Cloud Build service runs as a special, Google-managed "service account". We need to grant this account the necessary permissions to perform our deployment steps.
+Following security best practices, we will grant permissions to the dedicated, Google-managed Cloud Build service account.
 
 1.  **Get your unique Project Number:**
     ```bash
@@ -227,11 +227,11 @@ The Cloud Build service runs as a special, Google-managed "service account". We 
     ```
 2.  **Grant Permissions:** Copy the project number from the output and run the following commands, replacing `YOUR_PROJECT_NUMBER`.
     ```bash
-    export PROJECT_NUMBER=471278444008
+    export PROJECT_NUMBER=YOUR_PROJECT_NUMBER
     export CLOUDBUILD_SA="${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com"
 
     # Allow Cloud Build to deploy to GKE
-gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:${CLOUDBUILD_SA}" --role="roles/container.developer"
+    gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:${CLOUDBUILD_SA}" --role="roles/container.developer"
     # Allow Cloud Build to push images to Artifact Registry
     gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:${CLOUDBUILD_SA}" --role="roles/artifactregistry.writer"
     # Allow Cloud Build (and the app) to connect to Cloud SQL
@@ -242,31 +242,47 @@ gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:${CL
 
 ---
 
-## Step 6: Create the Cloud Build Trigger
+## Step 6: Allow Your User to Select the Service Account
+
+To prevent an issue where the correct service account doesn't appear in the trigger's dropdown menu, you must grant your own user account permission to "act as" the Cloud Build service account.
+
+1.  **Get Your User Email:** Find the account you are logged in with.
+    ```bash
+    gcloud auth list
+    ```
+2.  **Grant "Service Account User" Role:** Run the command below, replacing `YOUR_USER_EMAIL` with your email from the previous command and `YOUR_PROJECT_NUMBER` with your project number.
+    ```bash
+    export PROJECT_NUMBER=YOUR_PROJECT_NUMBER
+    export YOUR_USER_EMAIL=your-email@example.com
+
+    gcloud iam service-accounts add-iam-policy-binding ${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com \
+        --project=$PROJECT_ID \
+        --member="user:${YOUR_USER_EMAIL}" \
+        --role="roles/iam.serviceAccountUser"
+    ```
+
+---
+
+## Step 7: Create the Cloud Build Trigger
 
 This trigger connects GitHub to Cloud Build.
 
-1.  Open the Cloud Console to **Cloud Build** -> **Triggers**: [https://console.cloud.google.com/cloud-build/triggers](https://console.cloud.google.com/cloud-build/triggers)
+1.  Open the Cloud Console to **Cloud Build** -> **Triggers**.
 2.  Click **Create trigger**.
 3.  **Name:** `deploy-to-gke`.
 4.  **Region:** `us-central1` (or your chosen region).
 5.  **Event:** Select **Push to a branch**.
-6.  **Source:**
-    *   Click in the **Repository** field. Click **Connect new repository**.
-    *   Follow the prompts to authorize Google Cloud Build to access your GitHub account and select your Drupal project repository.
-    *   Once connected, select your repository from the list.
-7.  **Branch:** In the **Branch** field, enter `^main$`.
+6.  **Source:** Connect and select your GitHub repository.
+7.  **Branch:** `^main$`.
 8.  **Configuration:** Select **Cloud Build configuration file** and set the location to `cloudbuild.yaml`.
-9.  Click **Create**.
+9.  **Advanced (IMPORTANT):**
+    *   Expand the **Advanced** section.
+    *   Find the **Service account** field. Click the dropdown and select the account ending in **`@cloudbuild.gserviceaccount.com`**.
+10. Click **Create**.
 
 ***
 ### **Troubleshooting Note: Wrong Project ID in Errors**
-If your build fails with an error mentioning the wrong project ID (e.g., `...in project old-project-123...`), it means your Cloud Build Trigger was created while your Cloud Console was set to that old project. The trigger provides the incorrect `$PROJECT_ID` to the build.
-
-**To fix this:**
-1.  Ensure your Google Cloud Console is displaying the correct project (`drupal-project-481600`).
-2.  Delete the incorrect trigger.
-3.  Follow the steps above to re-create the trigger in the correct project.
+If your build fails with an error mentioning the wrong project ID, it means your trigger was created while your Cloud Console was set to the wrong project. To fix this, delete the trigger and re-create it, ensuring you are in the correct project first.
 ***
 
 ---
