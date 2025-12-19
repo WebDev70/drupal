@@ -163,7 +163,7 @@ steps:
     entrypoint: 'bash'
     args:
       - '-c'
-      - 'gcloud config set project $PROJECT_ID && gcloud container clusters get-credentials ${_GKE_CLUSTER_NAME} --region ${_REGION}'
+      - 'gcloud config set project $PROJECT_ID && gcloud container clusters get-credentials ${_GKE_CLUSTER_NAME} --zone ${_ZONE}'
 
   # This step uses the 'sed' command to find and replace the placeholders in our deployment manifest.
   - name: 'gcr.io/cloud-builders/gcloud'
@@ -207,6 +207,7 @@ images:
 # These are user-defined variables that can be passed in from the Trigger. We set defaults here.
 substitutions:
   _REGION: 'us-central1'
+  _ZONE: 'us-central1-a'
   _GKE_CLUSTER_NAME: 'drupal-cluster'
   _AR_REPO_NAME: 'drupal-repo'
   _SQL_INSTANCE_NAME: 'drupal-db-instance'

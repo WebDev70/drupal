@@ -17,7 +17,7 @@ steps:
     entrypoint: 'bash'
     args:
       - '-c'
-      - 'gcloud config set project $PROJECT_ID && gcloud container clusters get-credentials ${_GKE_CLUSTER_NAME} --region ${_REGION}'
+      - 'gcloud config set project $PROJECT_ID && gcloud container clusters get-credentials ${_GKE_CLUSTER_NAME} --zone ${_ZONE}'
 
   # 5. Prepare the Kubernetes manifests by replacing placeholders
   - name: 'gcr.io/cloud-builders/gcloud'
@@ -62,6 +62,7 @@ images:
 # Default values are provided for clarity.
 substitutions:
   _REGION: 'us-central1'
+  _ZONE: 'us-central1-a'
   _GKE_CLUSTER_NAME: 'drupal-cluster'
   _AR_REPO_NAME: 'drupal-repo'
   _SQL_INSTANCE_NAME: 'drupal-db-instance'
