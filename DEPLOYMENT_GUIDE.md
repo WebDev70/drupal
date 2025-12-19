@@ -309,4 +309,3 @@ git push origin main
     Wait for an `EXTERNAL-IP` to appear for the `drupal-service`. If it stays `<pending>` for more than 10 minutes, there might be an issue. You can debug by running `kubectl describe service drupal-service`.
 3.  **Access:** Open a web browser and navigate to the external IP address of your `drupal-service`. You should see the Drupal installation screen!
 
-
