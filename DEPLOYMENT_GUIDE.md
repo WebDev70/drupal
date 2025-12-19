@@ -46,6 +46,7 @@ export PROJECT_ID="$(gcloud config get-value project)"
 
 # This is the geographical region where your resources will be created.
 export REGION="us-central1"
+export ZONE="us-central1-a"
 
 # These are the public names for the resources we will create.
 export GKE_CLUSTER_NAME="drupal-cluster"
@@ -61,7 +62,7 @@ Run these commands one by one in your terminal.
 **1. Enable Necessary APIs**
 APIs (Application Programming Interfaces) are like control panels that let us manage services programmatically. This command switches on the controls for GKE, Artifact Registry, Cloud SQL, and Secret Manager so we can create and manage them.
 ```bash
-gcloud services enable container.googleapis.com artifactregistry.googleapis.com sqladmin.googleapis.com secretmanager.googleapis.com
+gcloud services enable container.googleapis.com artifactregistry.googleapis.com sqladmin.googleapis.com secretmanager.googleapis.com cloudbuild.googleapis.com
 ```
 
 **2. Create an Artifact Registry Repository**
@@ -89,10 +90,10 @@ gcloud sql users create ${DB_USER} --host=% --instance=${SQL_INSTANCE_NAME}
 ```
 
 **5. Create a GKE Cluster**
-This provisions your Kubernetes cluster. A cluster is a set of machines (called nodes) that will run your containers. We also enable Workload Identity, a secure way for applications inside GKE to access other Google Cloud services.
-*(This step can also take 5-10 minutes.)*
+To stay within the default quotas of new Google Cloud projects, we will create a smaller, single-node *zonal* cluster instead of a larger regional one. This is sufficient for development and testing. We also enable Workload Identity, a secure way for applications inside GKE to access other Google Cloud services.
+*(This step can take 5-10 minutes.)*
 ```bash
-gcloud container clusters create ${GKE_CLUSTER_NAME} --region=${REGION} --workload-pool=${PROJECT_ID}.svc.id.goog
+gcloud container clusters create ${GKE_CLUSTER_NAME} --zone=${ZONE} --num-nodes=1 --workload-pool=${PROJECT_ID}.svc.id.goog
 ```
 
 ---
@@ -108,7 +109,7 @@ Never put passwords or keys directly in your code or configuration files. We wil
 2.  **Add your password as a secret version.** This command takes your password and stores it as the first version of the secret you just created.
     **Replace `your-super-secret-password` with the actual database password you saved.**
     ```bash
-    echo -n "your-super-secret-password" | gcloud secrets versions add DB_PASSWORD --data-file=-
+    echo -n "Basing49" | gcloud secrets versions add DB_PASSWORD --data-file=-
     ```
 
 ---
@@ -217,45 +218,41 @@ options:
 
 ---
 
-## Step 5: Grant Permissions to the Cloud Build Service Account
+## Step 5: Create and Configure a Dedicated Build Service Account
 
-Following security best practices, we will grant permissions to the dedicated, Google-managed Cloud Build service account.
+To ensure our build has an identity with the correct permissions, and to avoid issues where default accounts don't exist, we will manually create a dedicated service account for our Cloud Build pipeline. This is a security best practice.
 
-1.  **Get your unique Project Number:**
+1.  **Create the Service Account:**
+    This command creates a new service account named `cloud-build-deployer` in your project.
     ```bash
-    gcloud projects describe $(gcloud config get-value project) --format='value(projectNumber)'
-    ```
-2.  **Grant Permissions:** Copy the project number from the output and run the following commands, replacing `YOUR_PROJECT_NUMBER`.
-    ```bash
-    export PROJECT_NUMBER=YOUR_PROJECT_NUMBER
-    export CLOUDBUILD_SA="${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com"
-
-    # Allow Cloud Build to deploy to GKE
-    gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:${CLOUDBUILD_SA}" --role="roles/container.developer"
-    # Allow Cloud Build to push images to Artifact Registry
-    gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:${CLOUDBUILD_SA}" --role="roles/artifactregistry.writer"
-    # Allow Cloud Build (and the app) to connect to Cloud SQL
-    gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:${CLOUDBUILD_SA}" --role="roles/cloudsql.client"
-    # Allow Cloud Build to access secrets from Secret Manager
-    gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:${CLOUDBUILD_SA}" --role="roles/secretmanager.secretAccessor"
+    gcloud iam service-accounts create cloud-build-deployer \
+      --display-name="Cloud Build Deployer SA" \
+      --project=$PROJECT_ID
     ```
 
----
-
-## Step 6: Allow Your User to Select the Service Account
-
-To prevent an issue where the correct service account doesn't appear in the trigger's dropdown menu, you must grant your own user account permission to "act as" the Cloud Build service account.
-
-1.  **Get Your User Email:** Find the account you are logged in with.
+2.  **Grant Permissions to the New Service Account:**
+    Now, we grant the roles this new account needs to perform the deployment.
     ```bash
-    gcloud auth list
+    export SERVICE_ACCOUNT_EMAIL="cloud-build-deployer@${PROJECT_ID}.iam.gserviceaccount.com"
+
+    # Grant GKE Developer role
+    gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:${SERVICE_ACCOUNT_EMAIL}" --role="roles/container.developer"
+    # Grant Artifact Registry Writer role
+    gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:${SERVICE_ACCOUNT_EMAIL}" --role="roles/artifactregistry.writer"
+    # Grant Cloud SQL Client role
+    gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:${SERVICE_ACCOUNT_EMAIL}" --role="roles/cloudsql.client"
+    # Grant Secret Manager Accessor role
+    gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:${SERVICE_ACCOUNT_EMAIL}" --role="roles/secretmanager.secretAccessor"
     ```
-2.  **Grant "Service Account User" Role:** Run the command below, replacing `YOUR_USER_EMAIL` with your email from the previous command and `YOUR_PROJECT_NUMBER` with your project number.
+
+3.  **Allow Your User to Select This Service Account:**
+    Finally, you must grant your own user account permission to "act as" this new service account. This is required to select it in the Cloud Build trigger UI.
+    *   First, find your user email: `gcloud auth list`
+    *   Then, run the command below, replacing `YOUR_USER_EMAIL` with your email.
     ```bash
-    export PROJECT_NUMBER=YOUR_PROJECT_NUMBER
     export YOUR_USER_EMAIL=your-email@example.com
-
-    gcloud iam service-accounts add-iam-policy-binding ${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com \
+    
+    gcloud iam service-accounts add-iam-policy-binding $SERVICE_ACCOUNT_EMAIL \
         --project=$PROJECT_ID \
         --member="user:${YOUR_USER_EMAIL}" \
         --role="roles/iam.serviceAccountUser"
@@ -263,7 +260,7 @@ To prevent an issue where the correct service account doesn't appear in the trig
 
 ---
 
-## Step 7: Create the Cloud Build Trigger
+## Step 6: Create the Cloud Build Trigger
 
 This trigger connects GitHub to Cloud Build.
 
@@ -277,7 +274,7 @@ This trigger connects GitHub to Cloud Build.
 8.  **Configuration:** Select **Cloud Build configuration file** and set the location to `cloudbuild.yaml`.
 9.  **Advanced (IMPORTANT):**
     *   Expand the **Advanced** section.
-    *   Find the **Service account** field. Click the dropdown and select the account ending in **`@cloudbuild.gserviceaccount.com`**.
+    *   Find the **Service account** field. Click the dropdown and select your new **`cloud-build-deployer@...`** service account.
 10. Click **Create**.
 
 ***
