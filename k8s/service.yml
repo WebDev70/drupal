@@ -16,7 +16,7 @@ kind: Service
 metadata:
   name: adminer-service
 spec:
-  type: LoadBalancer # For production, consider changing this to ClusterIP and accessing via `kubectl port-forward` for security
+  type: ClusterIP # Service is only reachable inside the cluster. Access locally via `kubectl port-forward`.
   selector:
     app: adminer
   ports:

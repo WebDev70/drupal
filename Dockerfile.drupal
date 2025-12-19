@@ -1,4 +1,4 @@
-FROM drupal:latest
+FROM drupal:11.3.1
 
 # Update package index
 RUN apt-get update -y
