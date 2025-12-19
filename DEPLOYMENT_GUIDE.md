@@ -244,6 +244,8 @@ To ensure our build has an identity with the correct permissions, and to avoid i
     gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:${SERVICE_ACCOUNT_EMAIL}" --role="roles/cloudsql.client"
     # Grant Secret Manager Accessor role
     gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:${SERVICE_ACCOUNT_EMAIL}" --role="roles/secretmanager.secretAccessor"
+    # Grant Logs Writer role for writing build logs
+    gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:${SERVICE_ACCOUNT_EMAIL}" --role="roles/logging.logWriter"
     ```
 
 3.  **Allow Your User to Select This Service Account:**
@@ -257,6 +259,17 @@ To ensure our build has an identity with the correct permissions, and to avoid i
         --project=$PROJECT_ID \
         --member="user:${YOUR_USER_EMAIL}" \
         --role="roles/iam.serviceAccountUser"
+    ```
+
+### 4. Grant GKE Node Permissions
+The GKE nodes themselves need permission to pull the private container images that Cloud Build creates. By default, the nodes use the Compute Engine default service account.
+
+*   Run the command below to grant this account the "Artifact Registry Reader" role, replacing `YOUR_PROJECT_NUMBER` with your project number.
+    ```bash
+    export PROJECT_NUMBER=YOUR_PROJECT_NUMBER
+    export NODE_SERVICE_ACCOUNT="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+
+    gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:${NODE_SERVICE_ACCOUNT}" --role="roles/artifactregistry.reader"
     ```
 
 ---
