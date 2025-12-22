@@ -130,10 +130,22 @@ This is the most important manifest. It defines a "Deployment," which manages th
 ```yaml
 # ... (File content is correct from previous steps, including placeholders)
 # The following securityContext is added to fix file permissions.
+# The startupProbe is added to fix a race condition between the Drupal container and the Cloud SQL Proxy.
 spec:
   securityContext:
     fsGroup: 33
   containers:
+    - name: drupal
+      # ... (image, ports, env)
+      volumeMounts:
+        - name: drupal-persistent-storage
+          mountPath: /var/www/html/sites/default/files
+      startupProbe:
+        tcpSocket:
+          port: 3306
+        initialDelaySeconds: 10
+        periodSeconds: 5
+        failureThreshold: 30
 ```
 
 ### `k8s/service.yml`
