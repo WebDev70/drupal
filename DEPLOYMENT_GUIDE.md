@@ -129,6 +129,11 @@ This is the most important manifest. It defines a "Deployment," which manages th
 *   **`__IMAGE_URL__`, `__IMAGE_TAG__`, `__INSTANCE_CONNECTION_NAME__`:** These are placeholders that our Cloud Build script will find and replace with real values during the deployment process.
 ```yaml
 # ... (File content is correct from previous steps, including placeholders)
+# The following securityContext is added to fix file permissions.
+spec:
+  securityContext:
+    fsGroup: 33
+  containers:
 ```
 
 ### `k8s/service.yml`
@@ -319,4 +324,15 @@ git push origin main
     ```
     Wait for an `EXTERNAL-IP` to appear for the `drupal-service`. If it stays `<pending>` for more than 10 minutes, there might be an issue. You can debug by running `kubectl describe service drupal-service`.
 3.  **Access:** Open a web browser and navigate to the external IP address of your `drupal-service`. You should see the Drupal installation screen!
+4.  **Drupal:** Application:
+    1. Access Drupal: Open your web browser and navigate to:
+      `http://35.239.231.209`
+      You should see the Drupal installation screen.
+
+   2. Access Adminer (Securely): If you need to access Adminer (your database management tool), open a new terminal window and run the following command
+      to create a secure tunnel:
+    ```bash
+    'kubectl port-forward svc/adminer-service 8080:8080'
+    ```
+    While that command is running, open a web browser and go to http://localhost:8080.
 

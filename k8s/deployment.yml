@@ -12,6 +12,8 @@ spec:
       labels:
         app: drupal
     spec:
+      securityContext:
+        fsGroup: 33
       containers:
         # Drupal Application Container
         - name: drupal
