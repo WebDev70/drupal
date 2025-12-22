@@ -78,3 +78,9 @@ spec:
           image: __IMAGE_URL__/adminer:__IMAGE_TAG__
           ports:
             - containerPort: 8080
+          volumeMounts:
+            - name: adminer-sessions
+              mountPath: /tmp
+      volumes:
+        - name: adminer-sessions
+          emptyDir: {}

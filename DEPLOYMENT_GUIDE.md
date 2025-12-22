@@ -146,6 +146,32 @@ spec:
         initialDelaySeconds: 10
         periodSeconds: 5
         failureThreshold: 30
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: adminer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: adminer
+  template:
+    metadata:
+      labels:
+        app: adminer
+    spec:
+      containers:
+        - name: adminer
+          image: __IMAGE_URL__/adminer:__IMAGE_TAG__
+          ports:
+            - containerPort: 8080
+          volumeMounts:
+            - name: adminer-sessions
+              mountPath: /tmp
+      volumes:
+        - name: adminer-sessions
+          emptyDir: {}
 ```
 
 ### `k8s/service.yml`
@@ -310,7 +336,25 @@ This trigger connects GitHub to Cloud Build.
 
 ***
 ### **Troubleshooting Note: Wrong Project ID in Errors**
-If your build fails with an error mentioning the wrong project ID, it means your trigger was created while your Cloud Console was set to the wrong project. To fix this, delete the trigger and re-create it, ensuring you are in the correct project first.
+If your build fails with an error mentioning the wrong project ID, it means your trigger was created while your Cloud Console was set to the wrong project. To fix this, delete the trigger and re-create it, ***
+### **Troubleshooting Database Access ("Access Denied")**
+If your application is running but you see an `Access denied for user 'drupal_user'` error in the Drupal UI, it means the password your application is using does not match the password set for the user in Cloud SQL. This can happen due to a typo when setting up the secret.
+
+**To fix this, you must synchronize the passwords:**
+
+1.  **Choose a New, Strong Password.**
+
+2.  **Reset the Cloud SQL User's Password:** This command directly sets the password on the database user. Replace `YOUR_NEW_PASSWORD` with your new password.
+    ```bash
+    gcloud sql users set-password drupal_user --host=% --instance=drupal-db-instance --password="YOUR_NEW_PASSWORD" --project=$PROJECT_ID
+    ```
+
+3.  **Update the Secret in Secret Manager:** This command updates the secret with the *exact same* new password.
+    ```bash
+    echo -n "YOUR_NEW_PASSWORD" | gcloud secrets versions add DB_PASSWORD --data-file=- --project=$PROJECT_ID
+    ```
+
+4.  **Re-run Your Build:** Go to the Cloud Build history and re-run your trigger. This will restart your Drupal pod with the new, correct password from Secret Manager.
 ***
 
 ---
