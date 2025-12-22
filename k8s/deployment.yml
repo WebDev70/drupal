@@ -39,6 +39,7 @@ spec:
               mountPath: /var/www/html/sites/default/files
           startupProbe:
             tcpSocket:
+              host: 127.0.0.1
               port: 3306
             initialDelaySeconds: 10
             periodSeconds: 5

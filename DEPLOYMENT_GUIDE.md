@@ -166,13 +166,13 @@ spec:
           volumeMounts:
             - name: drupal-persistent-storage
               mountPath: /var/www/html/sites/default/files
-          startupProbe:
-            tcpSocket:
-              port: 3306
-            initialDelaySeconds: 10
-            periodSeconds: 5
-            failureThreshold: 30
-
+                startupProbe:
+                  tcpSocket:
+                    host: 127.0.0.1
+                    port: 3306
+                  initialDelaySeconds: 10
+                  periodSeconds: 5
+                  failureThreshold: 30
         # Cloud SQL Auth Proxy Container (Sidecar)
         - name: cloud-sql-proxy
           image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.8.0
