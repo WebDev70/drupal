@@ -54,26 +54,7 @@ spec:
           securityContext:
             runAsUser: 0 # Run as root to have permission to listen on a privileged port
 
-      volumes:
-        - name: drupal-persistent-storage
-          persistentVolumeClaim:
-            claimName: drupal-pvc
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: adminer
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: adminer
-  template:
-    metadata:
-      labels:
-        app: adminer
-    spec:
-      containers:
+        # Adminer Container (Sidecar)
         - name: adminer
           image: __IMAGE_URL__/adminer:__IMAGE_TAG__
           ports:
@@ -81,6 +62,10 @@ spec:
           volumeMounts:
             - name: adminer-sessions
               mountPath: /tmp
+
       volumes:
+        - name: drupal-persistent-storage
+          persistentVolumeClaim:
+            claimName: drupal-pvc
         - name: adminer-sessions
           emptyDir: {}

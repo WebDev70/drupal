@@ -10,16 +10,4 @@ spec:
     - protocol: TCP
       port: 80
       targetPort: 80
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: adminer-service
-spec:
-  type: ClusterIP # Service is only reachable inside the cluster. Access locally via `kubectl port-forward`.
-  selector:
-    app: adminer
-  ports:
-    - protocol: TCP
-      port: 8080
-      targetPort: 8080
+

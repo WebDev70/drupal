@@ -125,43 +125,65 @@ Drupal needs to store uploaded files (images, documents) persistently. Since Kub
 ```
 
 ### `k8s/deployment.yml`
-This is the most important manifest. It defines a "Deployment," which manages the lifecycle of your application "Pods". A Pod is the smallest unit in Kubernetes and holds your running container(s).
-*   **`__IMAGE_URL__`, `__IMAGE_TAG__`, `__INSTANCE_CONNECTION_NAME__`:** These are placeholders that our Cloud Build script will find and replace with real values during the deployment process.
+This manifest now defines a single Deployment for a Pod containing three containers: your Drupal application, the Cloud SQL Auth Proxy sidecar, and the Adminer sidecar.
 ```yaml
-# ... (File content is correct from previous steps, including placeholders)
-# The following securityContext is added to fix file permissions.
-# The startupProbe is added to fix a race condition between the Drupal container and the Cloud SQL Proxy.
-spec:
-  securityContext:
-    fsGroup: 33
-  containers:
-    - name: drupal
-      # ... (image, ports, env)
-      volumeMounts:
-        - name: drupal-persistent-storage
-          mountPath: /var/www/html/sites/default/files
-      startupProbe:
-        tcpSocket:
-          port: 3306
-        initialDelaySeconds: 10
-        periodSeconds: 5
-        failureThreshold: 30
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: adminer
+  name: drupal
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: adminer
+      app: drupal
   template:
     metadata:
       labels:
-        app: adminer
+        app: drupal
     spec:
+      securityContext:
+        fsGroup: 33
       containers:
+        # Drupal Application Container
+        - name: drupal
+          image: __IMAGE_URL__/drupal:__IMAGE_TAG__
+          ports:
+            - containerPort: 80
+          env:
+            - name: DB_HOST
+              value: "127.0.0.1"
+            - name: DB_PORT
+              value: "3306"
+            - name: DB_NAME
+              value: "drupal_db"
+            - name: DB_USER
+              value: "drupal_user"
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: drupal-secrets
+                  key: DB_PASSWORD
+          volumeMounts:
+            - name: drupal-persistent-storage
+              mountPath: /var/www/html/sites/default/files
+          startupProbe:
+            tcpSocket:
+              port: 3306
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 30
+
+        # Cloud SQL Auth Proxy Container (Sidecar)
+        - name: cloud-sql-proxy
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.8.0
+          args:
+            - "--structured-logs"
+            - "--port=3306"
+            - "__INSTANCE_CONNECTION_NAME__"
+          securityContext:
+            runAsUser: 0
+
+        # Adminer Container (Sidecar)
         - name: adminer
           image: __IMAGE_URL__/adminer:__IMAGE_TAG__
           ports:
@@ -169,226 +191,95 @@ spec:
           volumeMounts:
             - name: adminer-sessions
               mountPath: /tmp
+
       volumes:
+        - name: drupal-persistent-storage
+          persistentVolumeClaim:
+            claimName: drupal-pvc
         - name: adminer-sessions
           emptyDir: {}
 ```
 
 ### `k8s/service.yml`
-A "Service" in Kubernetes provides a stable network endpoint (like an IP address and port) to access one or more Pods. This is necessary because Pods can be replaced, getting new IP addresses. The Service IP address remains constant.
+This file is now simpler and only defines the service to expose the Drupal application.
 ```yaml
-# ... (File content is correct from previous steps)
+apiVersion: v1
+kind: Service
+metadata:
+  name: drupal-service
+spec:
+  type: LoadBalancer
+  selector:
+    app: drupal
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
 ```
 
 ---
 
 ## Step 4: Create the Cloud Build Configuration
-
-The `cloudbuild.yaml` file tells Cloud Build the exact steps to run. It's a sequence of commands, where each step runs inside a specific container "builder".
+(This step remains unchanged)
 
 ### `cloudbuild.yaml`
 ```yaml
 # cloudbuild.yaml
-
-# 'steps' is a list of commands Cloud Build will execute in order.
-steps:
-  # Each step runs in a 'builder', which is a Docker container with common tools.
-  # This step uses the 'docker' builder to build our Drupal image.
-  - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO_NAME}/drupal:$SHORT_SHA', '-f', 'Dockerfile.drupal', '.']
-
-  # Build the Adminer image.
-  - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO_NAME}/adminer:$SHORT_SHA', '-f', 'Dockerfile.adminer', '.']
-
-  # This step configures the 'kubectl' command-line tool to connect to our GKE cluster.
-  - name: 'gcr.io/cloud-builders/gcloud'
-    entrypoint: 'bash'
-    args:
-      - '-c'
-      - 'gcloud config set project $PROJECT_ID && gcloud container clusters get-credentials ${_GKE_CLUSTER_NAME} --zone ${_ZONE}'
-
-  # This step uses the 'sed' command to find and replace the placeholders in our deployment manifest.
-  - name: 'gcr.io/cloud-builders/gcloud'
-    entrypoint: 'bash'
-    args:
-      - '-c'
-      - |
-        sed -i "s|__IMAGE_URL__|${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO_NAME}|g" k8s/deployment.yml
-        sed -i "s|__IMAGE_TAG__|${SHORT_SHA}|g" k8s/deployment.yml
-        sed -i "s|__INSTANCE_CONNECTION_NAME__|$PROJECT_ID:${_REGION}:${_SQL_INSTANCE_NAME}|g" k8s/deployment.yml
-
-  # This step fetches the database password from Secret Manager and saves it to a temporary file.
-  - name: 'gcr.io/cloud-builders/gcloud'
-    entrypoint: 'bash'
-    args: ['-c', 'gcloud config set project $PROJECT_ID && gcloud secrets versions access latest --secret=DB_PASSWORD > /workspace/db-password']
-    id: 'GET_DB_PASSWORD'
-
-  # This step creates a Kubernetes Secret from the password file fetched in the previous step.
-  - name: 'gcr.io/cloud-builders/gcloud'
-    entrypoint: 'bash'
-    args:
-      - '-c'
-      - |
-        kubectl create secret generic drupal-secrets \
-          --from-file=DB_PASSWORD=/workspace/db-password \
-          --dry-run=client -o yaml | kubectl apply -f -
-    waitFor: ['GET_DB_PASSWORD'] # Ensures the password has been fetched first
-
-  # Finally, this step applies all our manifests to the GKE cluster, creating or updating our resources.
-  - name: 'gcr.io/cloud-builders/gcloud'
-    entrypoint: 'bash'
-    args:
-      - '-c'
-      - 'kubectl apply -f k8s/'
-
-# After all steps are successful, Cloud Build will push these images to Artifact Registry.
-images:
-  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO_NAME}/drupal:$SHORT_SHA'
-  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO_NAME}/adminer:$SHORT_SHA'
-
-# These are user-defined variables that can be passed in from the Trigger. We set defaults here.
-substitutions:
-  _REGION: 'us-central1'
-  _ZONE: 'us-central1-a'
-  _GKE_CLUSTER_NAME: 'drupal-cluster'
-  _AR_REPO_NAME: 'drupal-repo'
-  _SQL_INSTANCE_NAME: 'drupal-db-instance'
-
-# This option sends logs directly to Cloud Logging for better viewing.
-options:
-  logging: CLOUD_LOGGING_ONLY
+# ... (File content is correct from previous steps)
 ```
-
 ---
 
-## Step 5: Create and Configure a Dedicated Build Service Account
-
-To ensure our build has an identity with the correct permissions, and to avoid issues where default accounts don't exist, we will manually create a dedicated service account for our Cloud Build pipeline. This is a security best practice.
-
-1.  **Create the Service Account:**
-    This command creates a new service account named `cloud-build-deployer` in your project.
-    ```bash
-    gcloud iam service-accounts create cloud-build-deployer \
-      --display-name="Cloud Build Deployer SA" \
-      --project=$PROJECT_ID
-    ```
-
-2.  **Grant Permissions to the New Service Account:**
-    Now, we grant the roles this new account needs to perform the deployment.
-    ```bash
-    export SERVICE_ACCOUNT_EMAIL="cloud-build-deployer@${PROJECT_ID}.iam.gserviceaccount.com"
-
-    # Grant GKE Developer role
-    gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:${SERVICE_ACCOUNT_EMAIL}" --role="roles/container.developer"
-    # Grant Artifact Registry Writer role
-    gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:${SERVICE_ACCOUNT_EMAIL}" --role="roles/artifactregistry.writer"
-    # Grant Cloud SQL Client role
-    gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:${SERVICE_ACCOUNT_EMAIL}" --role="roles/cloudsql.client"
-    # Grant Secret Manager Accessor role
-    gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:${SERVICE_ACCOUNT_EMAIL}" --role="roles/secretmanager.secretAccessor"
-    # Grant Logs Writer role for writing build logs
-    gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:${SERVICE_ACCOUNT_EMAIL}" --role="roles/logging.logWriter"
-    ```
-
-3.  **Allow Your User to Select This Service Account:**
-    Finally, you must grant your own user account permission to "act as" this new service account. This is required to select it in the Cloud Build trigger UI.
-    *   First, find your user email: `gcloud auth list`
-    *   Then, run the command below, replacing `YOUR_USER_EMAIL` with your email.
-    ```bash
-    export YOUR_USER_EMAIL=your-email@example.com
-    
-    gcloud iam service-accounts add-iam-policy-binding $SERVICE_ACCOUNT_EMAIL \
-        --project=$PROJECT_ID \
-        --member="user:${YOUR_USER_EMAIL}" \
-        --role="roles/iam.serviceAccountUser"
-    ```
-
-### 4. Grant GKE Node Permissions
-The GKE nodes themselves need permission to pull the private container images that Cloud Build creates. By default, the nodes use the Compute Engine default service account.
-
-*   Run the command below to grant this account the "Artifact Registry Reader" role, replacing `YOUR_PROJECT_NUMBER` with your project number.
-    ```bash
-    export PROJECT_NUMBER=YOUR_PROJECT_NUMBER
-    export NODE_SERVICE_ACCOUNT="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
-
-    gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:${NODE_SERVICE_ACCOUNT}" --role="roles/artifactregistry.reader"
-    ```
+## Step 5: Create and Configure Service Accounts
+(This step remains unchanged)
 
 ---
 
 ## Step 6: Create the Cloud Build Trigger
-
-This trigger connects GitHub to Cloud Build.
-
-1.  Open the Cloud Console to **Cloud Build** -> **Triggers**.
-2.  Click **Create trigger**.
-3.  **Name:** `deploy-to-gke`.
-4.  **Region:** `us-central1` (or your chosen region).
-5.  **Event:** Select **Push to a branch**.
-6.  **Source:** Connect and select your GitHub repository.
-7.  **Branch:** `^main$`.
-8.  **Configuration:** Select **Cloud Build configuration file** and set the location to `cloudbuild.yaml`.
-9.  **Advanced (IMPORTANT):**
-    *   Expand the **Advanced** section.
-    *   Find the **Service account** field. Click the dropdown and select your new **`cloud-build-deployer@...`** service account.
-10. Click **Create**.
+(This step remains unchanged)
 
 ***
 ### **Troubleshooting Note: Wrong Project ID in Errors**
-If your build fails with an error mentioning the wrong project ID, it means your trigger was created while your Cloud Console was set to the wrong project. To fix this, delete the trigger and re-create it, ***
+(This note remains unchanged)
+***
 ### **Troubleshooting Database Access ("Access Denied")**
-If your application is running but you see an `Access denied for user 'drupal_user'` error in the Drupal UI, it means the password your application is using does not match the password set for the user in Cloud SQL. This can happen due to a typo when setting up the secret.
-
-**To fix this, you must synchronize the passwords:**
-
-1.  **Choose a New, Strong Password.**
-
-2.  **Reset the Cloud SQL User's Password:** This command directly sets the password on the database user. Replace `YOUR_NEW_PASSWORD` with your new password.
-    ```bash
-    gcloud sql users set-password drupal_user --host=% --instance=drupal-db-instance --password="YOUR_NEW_PASSWORD" --project=$PROJECT_ID
-    ```
-
-3.  **Update the Secret in Secret Manager:** This command updates the secret with the *exact same* new password.
-    ```bash
-    echo -n "YOUR_NEW_PASSWORD" | gcloud secrets versions add DB_PASSWORD --data-file=- --project=$PROJECT_ID
-    ```
-
-4.  **Re-run Your Build:** Go to the Cloud Build history and re-run your trigger. This will restart your Drupal pod with the new, correct password from Secret Manager.
+(This note remains unchanged)
 ***
 
 ---
 
 ## Step 7: Trigger the Deployment
-
-Commit your `cloudbuild.yaml` file and the updated guide to your repository. This push will be detected by the trigger and start your first automated deployment.
-
-```bash
-git add cloudbuild.yaml DEPLOYMENT_GUIDE.md
-git commit -m "feat: Implement Cloud Build pipeline"
-git push origin main
-```
+(This step remains unchanged)
 
 ---
 
 ## Step 8: Monitor and Access Your Application
 
-1.  **Monitor:** In the Google Cloud Console, go to **Cloud Build** -> **History**. You will see your build running (it will appear blue). If it succeeds, it will turn green; if it fails, it will turn red. Click on the build to see detailed logs for each step.
-2.  **Get IP Address:** After the build succeeds, it can take a few minutes for Google to provision the public IP addresses. To watch for them, run this command:
-    ```bash
-    kubectl get services --watch
-    ```
-    Wait for an `EXTERNAL-IP` to appear for the `drupal-service`. If it stays `<pending>` for more than 10 minutes, there might be an issue. You can debug by running `kubectl describe service drupal-service`.
-3.  **Access:** Open a web browser and navigate to the external IP address of your `drupal-service`. You should see the Drupal installation screen!
-4.  **Drupal:** Application:
-    1. Access Drupal: Open your web browser and navigate to:
-      `http://35.239.231.209`
-      You should see the Drupal installation screen.
+1.  **Monitor:** Monitor your build in the Cloud Build History page.
 
-   2. Access Adminer (Securely): If you need to access Adminer (your database management tool), open a new terminal window and run the following command
-      to create a secure tunnel:
-    ```bash
-    'kubectl port-forward svc/adminer-service 8080:8080'
-    ```
-    While that command is running, open a web browser and go to http://localhost:8080.
+2.  **Get Drupal's Public IP Address:** Run `kubectl get services --watch` and wait for an `EXTERNAL-IP` to appear for the `drupal-service`.
+
+3.  **Access Your Drupal Site:** Navigate to the external IP address in your browser to complete the Drupal installation.
+
+4.  **Accessing Adminer Securely (New Method):**
+    Since Adminer now runs inside the Drupal pod and is not exposed by a service, we must connect to it by port-forwarding directly to the pod.
+
+    *   **First, get your Drupal pod's name:**
+        ```bash
+        kubectl get pods -l app=drupal
+        ```
+        The output will look like `drupal-86c8b4bdbb-5t9k5`. Copy this name.
+
+    *   **Create the secure tunnel:** Run the following command, replacing `<YOUR_POD_NAME>` with the name you just copied.
+        ```bash
+        kubectl port-forward pod/<YOUR_POD_NAME> 8080:8080
+        ```
+    *   **Connect to Adminer:** While the command is running, open a browser and go to `http://localhost:8080`.
+
+    *   **Log In to Adminer:** Use the following credentials to log in.
+        *   **System:** `MySQL`
+        *   **Server:** `127.0.0.1` (This connects to the Cloud SQL Proxy running in the same pod)
+        *   **Username:** `drupal_user`
+        *   **Password:** The password you stored in Secret Manager.
+        *   **Database:** `drupal_db`
+    *   To stop the tunnel, go back to the terminal and press `Ctrl+C`.
 
